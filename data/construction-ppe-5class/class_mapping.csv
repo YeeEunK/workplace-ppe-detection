@@ -1,0 +1,6 @@
+original_id,new_id,name
+5,0,Person
+0,1,helmet
+6,2,no_helmet
+2,3,vest
+11,4,no_vest

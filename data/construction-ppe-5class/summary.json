@@ -1,0 +1,16 @@
+{
+  "seed": 42,
+  "split_method": "original train kept; sorted original val shuffled with Python random, first 100 test",
+  "images": {
+    "train": 800,
+    "test": 100,
+    "val": 100
+  },
+  "selected_objects": {
+    "train": 5791,
+    "test": 698,
+    "val": 726
+  },
+  "empty_labels": 8,
+  "boxes_clipped": 69
+}
