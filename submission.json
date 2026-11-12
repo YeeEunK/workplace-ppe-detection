@@ -1,0 +1,15 @@
+{
+  "student_id": "202439729",
+  "name": "권이은",
+  "title": "YOLO 기반 작업장 개인보호구 미착용 및 위험구역 침입 탐지 서비스",
+  "github_url": "https://github.com/YeeEunK/workplace-ppe-detection",
+  "demo_url": "https://workplace-ppe-detection-jgrgbrkyfc67jmilinmjhg.streamlit.app/",
+  "data_type": "이미지 객체 탐지",
+  "training": "전이학습 (파인튜닝)",
+  "models": [
+    "YOLO11n 640",
+    "YOLO26n 640",
+    "YOLO11n 960"
+  ],
+  "primary_metric": "test mAP50: 0.889 (YOLO11n 960)"
+}
