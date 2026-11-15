@@ -1,11 +1,15 @@
 """Validation-only analysis of no_vest predictions, with IoU 0.5 matching."""
 from pathlib import Path
+import argparse
 import csv
 from PIL import Image, ImageDraw
 from ultralytics import YOLO
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / 'data/construction-ppe-5class'
+parser = argparse.ArgumentParser(description='안전조끼 미착용 검증 결과 분석')
+parser.add_argument('--data', type=Path, default=ROOT / 'data/construction-ppe-5class',
+                    help='YOLO 데이터셋 폴더 (images/val과 labels/val 포함)')
+DATA = parser.parse_args().data
 OUT = ROOT / 'results/vest_val_analysis'
 OUT.mkdir(parents=True, exist_ok=True)
 THRESHOLDS = [0.10, 0.20, 0.25, 0.30, 0.40, 0.50]
@@ -50,7 +54,7 @@ for i, path in enumerate(images, 1):
                     draw.rectangle(box, outline='cyan', width=4)
                     draw.text((box[0], max(0, box[1]-16)), f'FP {score:.2f}', fill='cyan')
                 im.thumbnail((1280,1280)); im.save(OUT / (path.stem + '.jpg'), quality=88)
-    if i % 10 == 0: print(f'{i}/100 images', flush=True)
+    if i % 10 == 0: print(f'{i}/{len(images)} images', flush=True)
 with (OUT / 'threshold_metrics.csv').open('w', newline='') as f:
     writer=csv.writer(f); writer.writerow(['threshold','TP','FP','FN','precision','recall'])
     for t, (tp,fp,fn) in totals.items():
