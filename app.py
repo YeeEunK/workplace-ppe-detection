@@ -95,6 +95,7 @@ else:
         video_key = (hashlib.sha256(video.getvalue()).hexdigest(), confidence, zone_enabled, (left, right, top, bottom) if zone_enabled else None)
         if st.session_state.get('video_key') != video_key:
             st.session_state.pop('video_result', None)
+            st.session_state.pop('video_events', None)
             st.session_state['video_key'] = video_key
         if video.size > 20 * 1024 * 1024:
             st.error('20MB 이하 동영상을 선택해 주세요.')
@@ -132,14 +133,41 @@ else:
                     source = root / 'input.mp4'
                     source.write_bytes(video.getvalue())
                     bar = st.progress(0, text='동영상을 분석하고 있습니다. 잠시 기다려 주세요.')
+                    events, last_seen = [], {}
+                    def save_event(seconds, labels, frame):
+                        fresh = [label for label in labels if seconds - last_seen.get(label, -10) >= 1.0]
+                        if fresh:
+                            for label in fresh:
+                                last_seen[label] = seconds
+                            h, w = frame.shape[:2]
+                            scale = min(1.0, 960 / max(w, h))
+                            small = cv2.resize(frame, (max(1, int(w*scale)), max(1, int(h*scale)))) if scale < 1 else frame
+                            ok, image = cv2.imencode('.jpg', small, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                            if ok:
+                                events.append((seconds, fresh, image.tobytes()))
                     count = process_video(source, root/'intermediate.mp4', root/'result.mp4', load_model(), confidence, bounds,
-                                          progress=lambda x: bar.progress(x, text='동영상을 분석하고 있습니다.'))
+                                          progress=lambda x: bar.progress(x, text='동영상을 분석하고 있습니다.'), event_callback=save_event)
                     st.session_state['video_result'] = (root/'result.mp4').read_bytes()
+                    st.session_state['video_events'] = events
                     bar.progress(1.0, text=f'분석 완료 · {count}개 장면')
             except Exception as exc:
                 st.session_state.pop('video_result', None)
+                st.session_state.pop('video_events', None)
                 st.error(f'영상 분석을 완료하지 못했습니다: {exc}')
         if 'video_result' in st.session_state:
+            events = st.session_state.get('video_events', [])
+            labels = {label for _, labels, _ in events for label in labels}
+            st.subheader('영상 분석 요약')
+            st.write('안전모 미착용: ' + ('감지됨' if '안전모 미착용 감지' in labels else '감지되지 않음'))
+            st.write('안전조끼 미착용: ' + ('감지됨' if '안전조끼 미착용 감지' in labels else '감지되지 않음'))
+            st.write('위험구역 침입: ' + ('감지됨' if '위험구역 침입 감지' in labels else '감지되지 않음') if zone_enabled else '위험구역 침입: 미설정')
+            st.caption('일부 장면을 추출해 분석하므로 감지되지 않았더라도 미착용이나 침입이 없었다는 뜻은 아닙니다. 확인할 장면은 같은 유형당 1초 간격으로 표시합니다.')
+            if events:
+                st.subheader('확인이 필요한 장면')
+                for seconds, labels, image in events:
+                    st.image(image, caption=f"{seconds:.1f}초 · {', '.join(labels)}", use_container_width=True)
+            else:
+                st.info('분석한 장면에서 미착용이나 위험구역 침입이 감지되지 않았습니다.')
             st.video(st.session_state['video_result'])
             st.download_button('결과 동영상 다운로드', st.session_state['video_result'],
                                file_name='ppe-analysis.mp4', mime='video/mp4')
