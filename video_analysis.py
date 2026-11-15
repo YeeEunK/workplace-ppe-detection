@@ -41,7 +41,13 @@ def process_video(path, intermediate, output, model, confidence, bounds, progres
             if frame_index % stride == 0:
                 height, width = frame.shape[:2]
                 if width * height > 1920 * 1080:
-                    raise ValueError('영상 해상도가 너무 큽니다. 1920×1080 이하 영상을 사용해 주세요.')
+                    scale = math.sqrt((1920 * 1080) / (width * height))
+                    width = max(2, int(width * scale) // 2 * 2)
+                    height = max(2, int(height * scale) // 2 * 2)
+                    frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+                elif width % 2 or height % 2:
+                    width, height = width - width % 2, height - height % 2
+                    frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
                 polygon = [(bounds[0]*width/100, bounds[2]*height/100),
                            (bounds[1]*width/100, bounds[2]*height/100),
                            (bounds[1]*width/100, bounds[3]*height/100),
