@@ -1,5 +1,9 @@
 from io import BytesIO
+import hashlib
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from video_analysis import process_video
 
 import streamlit as st
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
@@ -26,55 +30,94 @@ with st.sidebar:
         top = st.slider('위쪽 경계', 0, 99, 40)
         bottom = st.slider('아래쪽 경계', 1, 100, 90)
 
-uploaded = st.file_uploader('작업장 이미지 업로드', type=['jpg', 'jpeg', 'png'])
-if uploaded:
-    if uploaded.size > 15 * 1024 * 1024:
-        st.error('15MB 이하의 이미지를 선택해 주세요.')
-        st.stop()
-    try:
-        image = ImageOps.exif_transpose(Image.open(BytesIO(uploaded.getvalue()))).convert('RGB')
-        if image.width * image.height > 25_000_000:
-            st.error('이미지 크기가 너무 큽니다. 2,500만 픽셀 이하 이미지를 사용해 주세요.')
+input_mode = st.radio('분석할 파일', ['이미지', '동영상'], horizontal=True)
+
+if input_mode == '이미지':
+    uploaded = st.file_uploader('작업장 이미지 업로드', type=['jpg', 'jpeg', 'png'])
+    if uploaded:
+        if uploaded.size > 15 * 1024 * 1024:
+            st.error('15MB 이하의 이미지를 선택해 주세요.')
             st.stop()
-    except (UnidentifiedImageError, OSError, ValueError):
-        st.error('이미지를 열 수 없습니다. 다른 JPG 또는 PNG 파일을 선택해 주세요.')
-        st.stop()
-    if zone_enabled and (left >= right or top >= bottom):
-        st.error('위험구역의 왼쪽은 오른쪽보다, 위쪽은 아래쪽보다 작아야 합니다.')
-        st.stop()
-    polygon = [(left*image.width/100, top*image.height/100), (right*image.width/100, top*image.height/100), (right*image.width/100, bottom*image.height/100), (left*image.width/100, bottom*image.height/100)] if zone_enabled else []
-    preview = image.copy()
-    if polygon:
-        ImageDraw.Draw(preview).polygon(polygon, outline='red', width=max(3, image.width//400))
-    st.image(preview, caption='입력 이미지와 위험구역', use_container_width=True)
-    if st.button('안전 상태 분석', type='primary'):
         try:
-            with st.spinner('이미지를 분석하고 있습니다...'):
-                result = load_model().predict(image, imgsz=960, conf=confidence, verbose=False)[0]
-            detections = [{'name': result.names[int(b.cls.item())], 'confidence': float(b.conf.item()), 'box': b.xyxy[0].tolist()} for b in result.boxes]
-            people, unassigned = associate(detections, polygon)
-            status = overall(people, unassigned, zone_enabled)
-            rendered = Image.fromarray(result.plot()[:, :, ::-1])
-            draw = ImageDraw.Draw(rendered)
-            if polygon:
-                draw.polygon(polygon, outline='red', width=max(3, image.width//400))
-            for p in people:
-                x,y=p['foot']; radius=max(4,image.width//220)
-                draw.ellipse((x-radius,y-radius,x+radius,y+radius), fill='red' if p['intrusion'] else 'cyan')
-            st.subheader(f'전체 상태: {status}')
-            a,b,c=st.columns(3)
-            a.metric('탐지된 작업자', len(people))
-            b.metric('PPE 미착용 탐지 작업자', sum(any(p[k]=='미착용' for k in ('helmet','vest')) for p in people))
-            c.metric('위험구역 침입', sum(p['intrusion'] for p in people) if zone_enabled else '미설정')
-            st.image(rendered, caption='탐지 결과 · 점은 작업자 박스의 하단 중심', use_container_width=True)
-            if people:
-                st.subheader('작업자별 결과')
-                for i,p in enumerate(people,1):
-                    st.write(f"작업자 {i}: 안전모 {p['helmet']} / 안전조끼 {p['vest']} / 위험구역 {'침입' if p['intrusion'] else ('밖' if zone_enabled else '미설정')}")
-            else:
-                st.info('작업자가 탐지되지 않았습니다. 이미지와 탐지 기준값을 확인해 주세요.')
-            if unassigned:
-                st.warning(f'작업자와 연결하지 못한 보호구 탐지 {len(unassigned)}개가 있습니다.')
-            st.caption('보호구와 작업자 연결은 박스 위치에 근거한 추정입니다. 가림, 작은 객체, 겹침으로 오판할 수 있습니다.')
-        except Exception as exc:
-            st.error(f'분석을 완료하지 못했습니다: {exc}')
+            image = ImageOps.exif_transpose(Image.open(BytesIO(uploaded.getvalue()))).convert('RGB')
+            if image.width * image.height > 25_000_000:
+                st.error('이미지 크기가 너무 큽니다. 2,500만 픽셀 이하 이미지를 사용해 주세요.')
+                st.stop()
+        except (UnidentifiedImageError, OSError, ValueError):
+            st.error('이미지를 열 수 없습니다. 다른 JPG 또는 PNG 파일을 선택해 주세요.')
+            st.stop()
+        if zone_enabled and (left >= right or top >= bottom):
+            st.error('위험구역의 왼쪽은 오른쪽보다, 위쪽은 아래쪽보다 작아야 합니다.')
+            st.stop()
+        polygon = [(left*image.width/100, top*image.height/100), (right*image.width/100, top*image.height/100), (right*image.width/100, bottom*image.height/100), (left*image.width/100, bottom*image.height/100)] if zone_enabled else []
+        preview = image.copy()
+        if polygon:
+            ImageDraw.Draw(preview).polygon(polygon, outline='red', width=max(3, image.width//400))
+        st.image(preview, caption='입력 이미지와 위험구역', use_container_width=True)
+        if st.button('안전 상태 분석', type='primary'):
+            try:
+                with st.spinner('이미지를 분석하고 있습니다...'):
+                    result = load_model().predict(image, imgsz=960, conf=confidence, verbose=False)[0]
+                detections = [{'name': result.names[int(b.cls.item())], 'confidence': float(b.conf.item()), 'box': b.xyxy[0].tolist()} for b in result.boxes]
+                people, unassigned = associate(detections, polygon)
+                status = overall(people, unassigned, zone_enabled)
+                rendered = Image.fromarray(result.plot()[:, :, ::-1])
+                draw = ImageDraw.Draw(rendered)
+                if polygon:
+                    draw.polygon(polygon, outline='red', width=max(3, image.width//400))
+                for p in people:
+                    x,y=p['foot']; radius=max(4,image.width//220)
+                    draw.ellipse((x-radius,y-radius,x+radius,y+radius), fill='red' if p['intrusion'] else 'cyan')
+                st.subheader(f'전체 상태: {status}')
+                a,b,c=st.columns(3)
+                a.metric('탐지된 작업자', len(people))
+                b.metric('PPE 미착용 탐지 작업자', sum(any(p[k]=='미착용' for k in ('helmet','vest')) for p in people))
+                c.metric('위험구역 침입', sum(p['intrusion'] for p in people) if zone_enabled else '미설정')
+                st.image(rendered, caption='탐지 결과 · 점은 작업자 박스의 하단 중심', use_container_width=True)
+                if people:
+                    st.subheader('작업자별 결과')
+                    for i,p in enumerate(people,1):
+                        st.write(f"작업자 {i}: 안전모 {p['helmet']} / 안전조끼 {p['vest']} / 위험구역 {'침입' if p['intrusion'] else ('밖' if zone_enabled else '미설정')}")
+                else:
+                    st.info('작업자가 탐지되지 않았습니다. 이미지와 탐지 기준값을 확인해 주세요.')
+                if unassigned:
+                    st.warning(f'작업자와 연결하지 못한 보호구 탐지 {len(unassigned)}개가 있습니다.')
+                st.caption('보호구와 작업자 연결은 박스 위치에 근거한 추정입니다. 가림, 작은 객체, 겹침으로 오판할 수 있습니다.')
+            except Exception as exc:
+                st.error(f'분석을 완료하지 못했습니다: {exc}')
+
+else:
+    st.caption('10초 이하 MP4 · 20MB 이하 · 초당 최대 3장면을 분석합니다. 원본 소리는 결과에 포함되지 않습니다.')
+    video = st.file_uploader('작업장 동영상 업로드', type=['mp4'])
+    if video:
+        video_key = (hashlib.sha256(video.getvalue()).hexdigest(), confidence, zone_enabled, (left, right, top, bottom) if zone_enabled else None)
+        if st.session_state.get('video_key') != video_key:
+            st.session_state.pop('video_result', None)
+            st.session_state['video_key'] = video_key
+        if video.size > 20 * 1024 * 1024:
+            st.error('20MB 이하 동영상을 선택해 주세요.')
+            st.stop()
+        if zone_enabled and (left >= right or top >= bottom):
+            st.error('위험구역의 왼쪽은 오른쪽보다, 위쪽은 아래쪽보다 작아야 합니다.')
+            st.stop()
+        st.video(video)
+        st.caption('장면을 간격을 두고 분석하므로 그 사이의 상황은 놓칠 수 있습니다.')
+        if st.button('동영상 분석 시작', type='primary'):
+            try:
+                bounds = (left, right, top, bottom) if zone_enabled else None
+                with TemporaryDirectory(prefix='ppe-video-') as tmp:
+                    root = Path(tmp)
+                    source = root / 'input.mp4'
+                    source.write_bytes(video.getvalue())
+                    bar = st.progress(0, text='동영상을 분석하고 있습니다. 잠시 기다려 주세요.')
+                    count = process_video(source, root/'intermediate.mp4', root/'result.mp4', load_model(), confidence, bounds,
+                                          progress=lambda x: bar.progress(x, text='동영상을 분석하고 있습니다.'))
+                    st.session_state['video_result'] = (root/'result.mp4').read_bytes()
+                    bar.progress(1.0, text=f'분석 완료 · {count}개 장면')
+            except Exception as exc:
+                st.session_state.pop('video_result', None)
+                st.error(f'영상 분석을 완료하지 못했습니다: {exc}')
+        if 'video_result' in st.session_state:
+            st.video(st.session_state['video_result'])
+            st.download_button('결과 동영상 다운로드', st.session_state['video_result'],
+                               file_name='ppe-analysis.mp4', mime='video/mp4')
