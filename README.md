@@ -195,6 +195,12 @@ streamlit run app.py
 
 업로드 이미지 제한은 15MB 및 2,500만 픽셀이다. 원본 데이터는 저장소에 포함하지 않았다. 원본 YOLO 형식 데이터셋을 내려받은 후 `python prepare_data.py /path/to/construction-ppe --output ./data/construction-ppe-prepared`로 같은 방식의 5개 클래스 데이터를 만들 수 있다. 출력 폴더는 새 폴더이거나 비어 있어야 한다. 학습용 노트북은 Google Drive 경로를 사용하므로 본인 환경에 맞게 경로를 확인해야 한다.
 
+안전조끼 미착용 검증 분석은 위에서 만든 데이터 폴더를 지정해 실행한다. 결과표와 확인 이미지는 `results/vest_val_analysis/`에 저장된다.
+
+```bash
+python analyze_vest_val.py --data ./data/construction-ppe-prepared
+```
+
 ## 9. Lessons Learned
 
 ### Plus
