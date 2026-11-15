@@ -1,5 +1,6 @@
 from io import BytesIO
 import hashlib
+import cv2
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -88,6 +89,7 @@ if input_mode == '이미지':
 
 else:
     st.caption('10초 이하 MP4 · 20MB 이하 · 초당 최대 3장면을 분석합니다. 원본 소리는 결과에 포함되지 않습니다.')
+    st.caption('고정된 카메라 영상에 맞춘 기능입니다. 위험구역은 영상 화면에서 고정됩니다.')
     video = st.file_uploader('작업장 동영상 업로드', type=['mp4'])
     if video:
         video_key = (hashlib.sha256(video.getvalue()).hexdigest(), confidence, zone_enabled, (left, right, top, bottom) if zone_enabled else None)
@@ -101,6 +103,26 @@ else:
             st.error('위험구역의 왼쪽은 오른쪽보다, 위쪽은 아래쪽보다 작아야 합니다.')
             st.stop()
         st.video(video)
+        if zone_enabled:
+            with TemporaryDirectory(prefix='ppe-preview-') as tmp:
+                source = Path(tmp) / 'preview.mp4'
+                source.write_bytes(video.getvalue())
+                capture = cv2.VideoCapture(str(source))
+                try:
+                    ok, frame = capture.read()
+                finally:
+                    capture.release()
+                if ok:
+                    height, width = frame.shape[:2]
+                    scale = min(1.0, 1280 / max(width, height))
+                    if scale < 1:
+                        frame = cv2.resize(frame, (max(1, int(width * scale)), max(1, int(height * scale))))
+                    preview = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    w, h = preview.size
+                    ImageDraw.Draw(preview).rectangle((left*w/100, top*h/100, right*w/100, bottom*h/100), outline='red', width=max(3, w//300))
+                    st.image(preview, caption='위험구역 미리보기 · 영상의 첫 장면', use_container_width=True)
+                else:
+                    st.warning('영상의 첫 장면을 읽을 수 없어 위험구역을 미리 보여주지 못했습니다.')
         st.caption('장면을 간격을 두고 분석하므로 그 사이의 상황은 놓칠 수 있습니다.')
         if st.button('동영상 분석 시작', type='primary'):
             try:
