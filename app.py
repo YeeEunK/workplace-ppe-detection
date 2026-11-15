@@ -167,7 +167,10 @@ else:
                 for seconds, labels, image in events:
                     st.image(image, caption=f"{seconds:.1f}초 · {', '.join(labels)}", use_container_width=True)
             else:
-                st.info('분석한 장면에서 미착용이나 위험구역 침입이 감지되지 않았습니다.')
+                if zone_enabled:
+                    st.info('분석한 장면에서 미착용이나 위험구역 침입이 감지되지 않았습니다.')
+                else:
+                    st.info('분석한 장면에서 보호구 미착용이 감지되지 않았습니다. 위험구역 침입은 설정하지 않아 확인하지 않았습니다.')
             st.video(st.session_state['video_result'])
             st.download_button('결과 동영상 다운로드', st.session_state['video_result'],
                                file_name='ppe-analysis.mp4', mime='video/mp4')
