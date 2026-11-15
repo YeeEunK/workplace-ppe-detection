@@ -24,7 +24,7 @@ def inspect_video(path):
         cap.release()
 
 
-def process_video(path, intermediate, output, model, confidence, bounds, progress=None):
+def process_video(path, intermediate, output, model, confidence, bounds, progress=None, event_callback=None):
     fps, count = inspect_video(path)
     stride = max(1, math.ceil(fps / TARGET_FPS))
     cap = cv2.VideoCapture(str(path))
@@ -62,6 +62,16 @@ def process_video(path, intermediate, output, model, confidence, bounds, progres
                     pts = [(int(x), int(y)) for x,y in polygon]
                     for i in range(4):
                         cv2.line(rendered, pts[i], pts[(i+1)%4], (0,0,255), max(2,width//400))
+                if event_callback:
+                    labels = []
+                    if any(d['name'] == 'no_helmet' for d in detections):
+                        labels.append('안전모 미착용 감지')
+                    if any(d['name'] == 'no_vest' for d in detections):
+                        labels.append('안전조끼 미착용 감지')
+                    if bounds and any(p['intrusion'] for p in people):
+                        labels.append('위험구역 침입 감지')
+                    if labels:
+                        event_callback(frame_index / fps, labels, rendered)
                 cv2.putText(rendered, {'확인 필요':'CHECK'}.get(status, status), (20,40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
                 if writer is None:
                     writer = cv2.VideoWriter(str(intermediate), cv2.VideoWriter_fourcc(*'mp4v'), fps / stride, (width,height))
