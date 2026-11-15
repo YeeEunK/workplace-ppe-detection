@@ -206,3 +206,6 @@ streamlit run app.py
 - **데이터:** 새로운 현장·카메라에서 촬영한 독립 이미지로 미착용과 작은 객체를 추가 검증한다.
 - **모델:** 검증 데이터에서 안전모 미착용의 오탐·미탐을 함께 살펴보고 기준값과 추가 데이터를 검토한다. 이미 사용한 test에 맞춰 조정하지 않는다.
 - **서비스:** 작업자와 PPE 연결, 위험구역 판정을 별도 정답 사례로 평가하고 겹침·가림에 대한 처리를 개선한다.
+
+
+시연 영상 출처: Mikael Blomkvist, [Construction Workers Walking at the Construction Site](https://www.pexels.com/video/construction-workers-walking-at-the-construction-site-8965526/), Pexels. [Pexels 라이선스](https://www.pexels.com/license/).
